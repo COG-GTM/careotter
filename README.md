@@ -21,7 +21,7 @@ make infra-up
 make up
 
 # Open the app
-open http://localhost:3000        # Web App (React / Next.js)
+open http://localhost:3000        # Web App (React / Vite)
 open http://localhost:4200        # Admin Dashboard (Angular)
 ```
 
@@ -46,13 +46,13 @@ make down
 |---------|----------|-----------|------|-------------|
 | API Gateway | Go 1.22 | Chi | 8080 | Request routing, rate limiting, JWT validation |
 | Auth Service | Java 17 | Spring Boot 3 | 8081 | Authentication, authorization, user management |
-| File Service | Rust 1.77 | Actix-Web 4 | 8082 | File upload/download, S3 integration, versioning |
+| File Service | Rust (stable) | Actix-Web 4 | 8082 | File upload/download, S3 integration, versioning |
 | Document Service | Python 3.12 | FastAPI | 8083 | Document CRUD, version history, snapshots |
-| Collaboration Service | Node.js 20 | Socket.io | 8084 (HTTP) / 8085 (WS) | Real-time collaborative editing (CRDT via Yjs) |
+| Collaboration Service | Node.js 20 | Socket.io | 8084 (HTTP + WebSocket) | Real-time collaborative editing (CRDT via Yjs) |
 | Notification Service | Kotlin 1.9 | Ktor 2.3 | 8086 | Event-driven notifications (email, in-app, webhook) |
 | Search Service | Python 3.12 | Flask 3.0 | 8087 | Full-text search via MeiliSearch |
 | Analytics Service | Scala 3.4 | Akka HTTP | 8088 | Usage analytics, data aggregation |
-| Admin Service | Ruby 3.3 | Rails 7.1 | 8089 | Admin dashboard backend |
+| Admin Service | Ruby 3.3 | Rails 7.1 | 8089 | Admin dashboard backend, incidents and Devin triage sessions |
 | Audit Service | C# 12 | ASP.NET 8 | 8090 | Immutable audit trail, compliance |
 | Report Service *(legacy)* | Java 8 | Spring Boot 2.5 | 8091 | PDF/CSV/Excel report generation (tech-debt: upgrade target Java 17+, Spring Boot 3.2+) |
 
@@ -65,10 +65,22 @@ make down
 | Web App | React 18 / Vite SPA | 3000 | Main user-facing application (served by nginx in production) |
 | Admin Dashboard | Angular 17 | 4200 | Administrative interface |
 | Mobile (Android/iOS) | Capacitor | — | Native shells wrapping the Web App SPA; see [`frontend/client-app`](frontend/client-app/) |
+| Desktop | Electron (`frontend/client-app/desktop`) | — | Desktop shell for the same SPA |
+| Windows Desktop | WPF, .NET Framework 4.8 | — | Native Windows client in [`clients/windows-desktop`](clients/windows-desktop/) |
+
+### Standalone
+
+| App | Stack | Port | Description |
+|-----|-------|------|-------------|
+| Legacy Portal *(legacy)* | Java 11 / Spring Boot 2.7 | 8095 | On-prem modular monolith (announcements, preferences, feedback) used for rehost and decomposition exercises; not behind the gateway and not in `docker-compose.yml`. See [`services/legacy-portal`](services/legacy-portal/README.md). |
 
 ## Architecture
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the full system design, data flow, and infrastructure details.
+[![Careotter architecture](docs/diagrams/architecture.png)](docs/diagrams/architecture.svg)
+
+Clients call the Go **API gateway** (`:8080`), which checks the JWT and proxies `/api/v1/*` to ten backend services; the editor also holds a WebSocket to collab-service. Services keep relational data in PostgreSQL (`otterworks` and `otterworks_reports`), sessions and collab state in Redis, search indexes in MeiliSearch, and file blobs, metadata, notifications and audit events in S3 and DynamoDB. File and document changes go out on the `otterworks-events` SNS topic to SQS queues read by notification, audit and search. `legacy-portal` runs on its own, and `etl/` runs cron batch jobs.
+
+The diagram is generated from [`docs/diagrams/architecture.dot`](docs/diagrams/architecture.dot) (Graphviz; run `docs/diagrams/render.sh` after editing). See [ARCHITECTURE.md](ARCHITECTURE.md) for routing, data, events, deployment and repository layout, [docs/flows.md](docs/flows.md) for request flows, and [demo-platform/docs/architecture.md](demo-platform/docs/architecture.md) for the multi-tenant demo platform.
 
 ## Infrastructure
 
@@ -81,13 +93,14 @@ Managed via Terraform in `infrastructure/terraform/`:
 - SQS/SNS (event bus)
 - MeiliSearch (full-text search)
 - Cognito (identity federation)
-- CloudFront (CDN)
-- ECR (container image repositories)
+- IRSA roles and CloudWatch monitoring
+
+The VPC, EKS cluster and ECR repositories are in `platform/terraform/`.
 
 ### Kubernetes
 - Helm charts per service in `infrastructure/helm/`
 - Base namespace resources (ResourceQuota, LimitRange) in `infrastructure/k8s/`
-- Deploys to EKS cluster managed by [platform-engineering-shared-services](https://github.com/Cognition-Partner-Workshops/platform-engineering-shared-services)
+- Deploys to the EKS cluster from `platform/terraform/`; per-attendee demo tenants are run by [`demo-platform/`](demo-platform/README.md)
 
 ### Deploy to AWS
 
@@ -130,7 +143,8 @@ GitHub Actions workflows in `.github/workflows/`:
 |----------|---------|-------------|
 | `ci.yml` | Push / PR to `main` | Lint, test, and build changed services (change-detection via path filters) |
 | `docker-build.yml` | Push to `main` / tags | Build and push Docker images to ECR |
-| `security-scan.yml` | Push / PR | SAST, dependency audit, and container scanning |
+| `security-scan.yml` | Push / PR to `main`, weekly | SAST, dependency audit, and container scanning |
+| `sast-auto-remediate.yml` | PR to `main` | Trivy and SonarCloud scans on human PRs; findings trigger a Devin auto-fix |
 
 ## Makefile Commands
 
@@ -159,7 +173,7 @@ Per-service build targets are also available (e.g., `make build-gateway`, `make 
 
 ```
 careotter/
-├── services/              # Backend microservices (11 services, 8 languages)
+├── services/              # Gateway + 10 backend services (8 languages) + legacy-portal
 │   ├── api-gateway/       #   Go / Chi
 │   ├── auth-service/      #   Java / Spring Boot
 │   ├── file-service/      #   Rust / Actix-Web
@@ -171,7 +185,9 @@ careotter/
 │   ├── admin-service/     #   Ruby / Rails
 │   ├── audit-service/     #   C# / ASP.NET
 │   └── report-service/    #   Java 8 / Spring Boot 2.5 (legacy)
-├── frontend/              # Web app (React/Next.js) + Admin dashboard (Angular)
+│   └── legacy-portal/     #   Java 11 / Spring Boot 2.7 standalone monolith
+├── frontend/              # Web app (React/Vite) + Admin dashboard (Angular)
+├── clients/windows-desktop/ # Native Windows client (WPF)
 ├── infrastructure/
 │   ├── terraform/         #   App-specific AWS resources (S3, RDS, DynamoDB, etc.)
 │   ├── helm/              #   Per-service Helm charts
@@ -189,11 +205,13 @@ careotter/
 ├── security/
 │   ├── policies/          #   Network policies (default-deny, DNS, namespace egress)
 │   └── scanning/          #   Trivy container scanning config
-├── etl/
-│   ├── airflow/           #   Airflow DAGs, plugins, and tests
-│   └── spark/             #   Scala Spark processing jobs
+├── etl/                   # Cron-driven Python batch jobs (scripts/, crontab, run.sh)
+├── platform/terraform/    # VPC, EKS, ECR
+├── demo-platform/         # Multi-tenant demo control plane (dashboard, runner, reaper, Helm, Terraform)
+├── tests/api/             # Cross-service API flow tests
+├── docs/                  # Flows, runbooks, labs, architecture diagrams
 ├── scripts/               # Deploy and teardown scripts
-└── .github/workflows/     # CI/CD pipelines (ci, docker-build, security-scan)
+└── .github/workflows/     # CI/CD pipelines (ci, docker-build, security-scan, sast-auto-remediate)
 ```
 
 ## Contributing
