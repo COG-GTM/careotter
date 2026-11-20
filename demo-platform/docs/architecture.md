@@ -1,7 +1,26 @@
 # Careotter Demo Platform — Design (Multi-Tenant Ops Dashboard)
 
-Status: DRAFT for review. Grounded in the **actual** deployed infrastructure discovered on
-2026-07-16 (not the idealized platform template). Decisions needed from you are in §11.
+Status: design doc, partly implemented. §1 records the infrastructure discovered on
+2026-07-16 (the starting point for this design); §0 lists what is in this repo on `main`
+today. The app it hosts is described in [ARCHITECTURE.md](../../ARCHITECTURE.md).
+
+---
+
+## 0. What is implemented on `main`
+
+| Component | Where | State on `main` |
+|---|---|---|
+| Ops dashboard (Next.js, strict TypeScript) | `demo-platform/dashboard` | Implemented: login page and tenant table UI (`app/page.tsx`, `app/login`), the API routes in §3, control-table client (`lib/control.ts`), Kubernetes reads and Job launches (`lib/k8s.ts`, `lib/jobs.ts`), passcode session and rate limit (`lib/session.ts`, `lib/ratelimit.ts`). |
+| Runner image | `demo-platform/runner` | Implemented: one image whose `OP` (`deploy`, `teardown`, `inject`, `reset`, `reap`) wraps `scripts/deploy-tenant.sh`, `scripts/teardown-tenant.sh`, `scripts/inject-bug.sh` and the reaper. Dashboard actions run it as Kubernetes Jobs in `otterworks-platform`. |
+| Reaper v2 + orphan sweep | `demo-platform/reaper/reaper.sh` | Implemented (§5). Runs as the chart's CronJob (`*/15 * * * *` by default) and reads `CONFIG#reaper` from the control table. Supersedes the namespace-only TTL reaper in `scripts/tenant-platform-baseline.sh` once the chart is deployed. |
+| Helm chart | `demo-platform/helm/demo-platform` | Implemented: namespace, RBAC, service account, secret, dashboard Deployment/Service/Ingress (`ops.otterworks.xyz` by default), reaper CronJob. |
+| Terraform | `demo-platform/infra/terraform` | Implemented: control table `otterworks-demo-control` (PK/SK, TTL, KMS) and dashboard IRSA role; Route53 zone and external-dns/cert-manager IRSA behind `enable_dns` (default `false`). |
+| DNS + TLS (§6) | `dns.tf`, `deploy-tenant.sh --host-suffix` | Opt-in: `enable_dns` defaults to `false` and `deploy-tenant.sh` defaults to path routing (no host suffix). Installing external-dns and cert-manager is not in this repo. |
+| Autoscaling, prefix delegation, PgBouncer (§7) | — | Not in this repo; see [scaling.md](scaling.md). |
+
+The repo-home decision (§11.1) is settled: the control plane lives in this monorepo under
+`demo-platform/`. API details are in [api-contract.md](api-contract.md) and the table layout in
+[control-table-schema.md](control-table-schema.md).
 
 ---
 
@@ -16,7 +35,7 @@ Status: DRAFT for review. Grounded in the **actual** deployed infrastructure dis
 | RDS | 1 shared instance; **database-per-tenant** (`otterworks_<id>`). Good — already single-instance. |
 | S3 | **Multiple** buckets: `otterworks-files-dev`, `-audit-archive-dev`, `-data-lake-dev`, `-analytics-dev-*`. Shared across tenants (Tier-A prefixing), **not** one bucket. |
 | DynamoDB | **Multiple** tables: `otterworks-file-metadata-dev`, `-file-shares-dev`, `-file-versions-dev`, `-folders-dev`, `-notifications-dev`, `-audit-events-dev`. Shared across tenants, **not** one table. |
-| Tenants | `otterworks` (golden) + ephemeral `otterworks-<id>` (per-tenant ns + DB + in-cluster Redis/Meili). Deployed by `otterworks/scripts/deploy-tenant.sh`. |
+| Tenants | `otterworks` (golden) + ephemeral `otterworks-<id>` (per-tenant ns + DB + in-cluster Redis/Meili). Deployed by `scripts/deploy-tenant.sh`. |
 | Tenant→branch | Not tracked anywhere. `workshop-<id>` branches exist by convention only. |
 | State/registry | None. No record of which tenants exist, who owns them, TTLs, or branch mapping. |
 
@@ -55,14 +74,16 @@ See the rendered diagram: `platform-vs-multitenant.png`.
 A small **platform service** (not per-tenant) in namespace `otterworks-platform`, exposed at
 `https://ops.otterworks.xyz` (its own host, wildcard TLS).
 
-**Backend API** (stateless; all state in the control table):
-- `GET  /api/tenants` — list all tenants + live resources (ns status, pod ready counts, DB present, URL, owner, branch, tier, created/expires, node/cost estimate). Live data = control table joined with a live `kubectl`/AWS read.
-- `POST /api/tenants/checkout` — `{ id?, branch, owner, ttl, tier }` → reserve id (atomic), record mapping, trigger deploy.
+**Backend API** (stateless; all state in the control table; routes under `dashboard/app/api`):
+- `POST /api/auth/login`, `POST /api/auth/logout` — passcode session cookie.
+- `GET  /api/health` — liveness/readiness.
+- `GET  /api/tenants` — list all tenants + live resources (ns status, pod ready counts, DB present, URL, owner, branch, tier, created/expires). Live data = control table joined with a live Kubernetes read. `GET /api/tenants/{id}` returns one.
+- `POST /api/tenants/checkout` — `{ id?, branch, owner, ttl, tier }` → reserve id (atomic), record mapping, launch a deploy Job.
 - `POST /api/tenants/{id}/checkin` — tear down + free id.
 - `POST /api/tenants/{id}/extend` — bump TTL.
-- `GET/PUT /api/reaper/schedule` — view/set reaper cadence + policy.
+- `POST /api/tenants/{id}/inject` / `/reset` — drive the bug catalog.
+- `GET/PUT /api/reaper` — view/set reaper policy (`CONFIG#reaper`); `GET /api/reaper/orphans` — live resources with no control-table record.
 - `GET  /api/audit` — checkout/checkin/teardown history.
-- `POST /api/tenants/{id}/inject` / `/reset` — optional: drive the bug catalog.
 
 **Auth = passcode, server-side enforced:**
 - Passcode stored as a K8s Secret (never in code/URL). Login exchanges it for a short-lived signed session cookie (HttpOnly, Secure, SameSite=Strict).
@@ -117,7 +138,7 @@ Replaces the current TTL reaper (which deletes namespaces but **leaves orphan DB
 - Register **`otterworks.xyz`** (Route53) → hosted zone.
 - **external-dns** watches Ingress objects and writes `t-<id>.demo.otterworks.xyz` records automatically — **zero per-tenant DNS work**.
 - **cert-manager** issues a single wildcard cert `*.demo.otterworks.xyz` (Let's Encrypt **DNS-01** via Route53) → HTTPS for every tenant + the dashboard.
-- `deploy-tenant.sh` defaults to `--host-suffix demo.otterworks.xyz` + TLS annotations.
+- Target: `deploy-tenant.sh` defaults to `--host-suffix demo.otterworks.xyz` + TLS annotations. On `main` it still defaults to path routing; pass `--host-suffix` for host-based ingress.
 
 ---
 
@@ -159,6 +180,8 @@ I recommend (A) now and (B) only if you specifically want the consolidation. **N
 
 ## 10. Rollout plan (phased; child agents in parallel where marked ⑂)
 
+Steps 2–6 are in the repo (see §0). Steps 1, 7 and 8 happen on the live cluster and are not tracked here.
+
 1. **DNS/TLS foundation:** register `otterworks.xyz`, hosted zone, install external-dns + cert-manager, wildcard cert. Move any existing tenants onto real hostnames.
 2. **Control table** (`otterworks-demo-control`) + Terraform/CDK for it.
 3. ⑂ **Dashboard backend** (API + passcode auth + state store client).
@@ -170,9 +193,9 @@ I recommend (A) now and (B) only if you specifically want the consolidation. **N
 
 ---
 
-## 11. Decisions I need from you
+## 11. Open decisions
 
-1. **Repo home** for the dashboard + control plane:
+1. **Repo home** — *resolved: this monorepo (`demo-platform/`).* Original options: for the dashboard + control plane:
    - (a) **`otterworks`** — co-located with the live cluster infra + tenant scripts (fastest).
    - (b) **`platform-engineering-shared-services`** — matches your "platform standard" knowledge, but that repo is currently a template for a *different* app / non-existent cluster; more reconciliation.
    - (c) a **new generalized repo** (e.g. `demo-tenant-operations`) if you want this reusable across demo apps.
