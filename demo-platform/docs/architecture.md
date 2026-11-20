@@ -12,7 +12,7 @@ today. The app it hosts is described in [ARCHITECTURE.md](../../ARCHITECTURE.md)
 |---|---|---|
 | Ops dashboard (Next.js, strict TypeScript) | `demo-platform/dashboard` | Implemented: login page and tenant table UI (`app/page.tsx`, `app/login`), the API routes in §3, control-table client (`lib/control.ts`), Kubernetes reads and Job launches (`lib/k8s.ts`, `lib/jobs.ts`), passcode session and rate limit (`lib/session.ts`, `lib/ratelimit.ts`). |
 | Runner image | `demo-platform/runner` | Implemented: one image whose `OP` (`deploy`, `teardown`, `inject`, `reset`, `reap`) wraps `scripts/deploy-tenant.sh`, `scripts/teardown-tenant.sh`, `scripts/inject-bug.sh` and the reaper. Dashboard actions run it as Kubernetes Jobs in `otterworks-platform`. |
-| Reaper v2 + orphan sweep | `demo-platform/reaper/reaper.sh` | Implemented (§5). Runs as the chart's CronJob (`*/15 * * * *` by default) and reads `CONFIG#reaper` from the control table. Supersedes the namespace-only TTL reaper in `scripts/tenant-platform-baseline.sh` once the chart is deployed. |
+| Reaper v2 + orphan sweep | `demo-platform/reaper/reaper.sh` | Implemented (§5). Runs as the chart's CronJob; the cadence comes from Helm `reaper.schedule` (`*/15 * * * *` by default). Each run reads `enabled`, `grace_seconds` and `sweep_orphans` from `CONFIG#reaper`. The dashboard stores `schedule_cron` there too, but nothing applies it to the CronJob yet. Supersedes the namespace-only TTL reaper in `scripts/tenant-platform-baseline.sh` once the chart is deployed. |
 | Helm chart | `demo-platform/helm/demo-platform` | Implemented: namespace, RBAC, service account, secret, dashboard Deployment/Service/Ingress (`ops.otterworks.xyz` by default), reaper CronJob. |
 | Terraform | `demo-platform/infra/terraform` | Implemented: control table `otterworks-demo-control` (PK/SK, TTL, KMS) and dashboard IRSA role; Route53 zone and external-dns/cert-manager IRSA behind `enable_dns` (default `false`). |
 | DNS + TLS (§6) | `dns.tf`, `deploy-tenant.sh --host-suffix` | Opt-in: `enable_dns` defaults to `false` and `deploy-tenant.sh` defaults to path routing (no host suffix). Installing external-dns and cert-manager is not in this repo. |
@@ -119,7 +119,7 @@ PK = AUDIT#<ts>#<id> # append-only audit events
 
 Replaces the current TTL reaper (which deletes namespaces but **leaves orphan DBs**).
 
-- Runs on the schedule stored in `CONFIG#reaper` (editable from the dashboard).
+- Target: runs on the schedule stored in `CONFIG#reaper` (editable from the dashboard). On `main` the cadence is the Helm value `reaper.schedule`; the dashboard's `schedule_cron` is saved but not applied.
 - For each expired/checked-in tenant, performs **idempotent, retry-safe** teardown of **all** its resources:
   1. namespace `otterworks-<id>` (pods/Redis/Meili/ingress)
   2. RDS database `otterworks_<id>`
@@ -180,7 +180,7 @@ I recommend (A) now and (B) only if you specifically want the consolidation. **N
 
 ## 10. Rollout plan (phased; child agents in parallel where marked ⑂)
 
-Steps 2–6 are in the repo (see §0). Steps 1, 7 and 8 happen on the live cluster and are not tracked here.
+Steps 2–6 are in the repo (see §0), except that the reaper cadence is still set from Helm, not the control table. Steps 1, 7 and 8 happen on the live cluster and are not tracked here.
 
 1. **DNS/TLS foundation:** register `otterworks.xyz`, hosted zone, install external-dns + cert-manager, wildcard cert. Move any existing tenants onto real hostnames.
 2. **Control table** (`otterworks-demo-control`) + Terraform/CDK for it.
