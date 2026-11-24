@@ -1,11 +1,11 @@
 import { test, expect, shot } from './fixtures';
 
 test('dashboard stats and charts', async ({ signedIn: page }, info) => {
-  const card = (label: string) => page.locator('mat-card').filter({ hasText: label });
-  await expect(card('Total Users')).toContainText('12');
-  await expect(card('Active Documents')).toContainText('0');
-  await expect(card('Storage Used')).toContainText('25.3 GB');
-  await expect(card('Active Sessions')).toContainText('9');
+  const value = (label: string) => page.locator('mat-card').filter({ hasText: label }).locator('.stat-value');
+  await expect(value('Total Users')).toHaveText('12');
+  await expect(value('Active Documents')).toHaveText('0');
+  await expect(value('Storage Used')).toHaveText('25.3 GB');
+  await expect(value('Active Sessions')).toHaveText('9');
   await expect(page.getByText('User Signups')).toBeVisible();
   await expect(page.getByText('Document Activity')).toBeVisible();
   await expect(page.locator('canvas')).toHaveCount(2);
