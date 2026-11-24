@@ -19,7 +19,7 @@ Careotter is a collaborative file storage and document editing platform (functio
                          |                                       |
                 +--------+---------+                   +---------+--------+
                 |  Web Frontend    |                   |  Admin Dashboard |
-                |  (React/Next.js) |                   |  (Angular 17)    |
+                |  (React/Next.js) |                   |  (Angular 21)    |
                 +--------+---------+                   +---------+--------+
                          |                                       |
                 +--------+---------+                             |
@@ -311,7 +311,7 @@ otterworks/
 │   └── audit-service/                 # C# / ASP.NET
 ├── frontend/
 │   ├── web-app/                       # React / Next.js
-│   └── admin-dashboard/               # Angular 17
+│   └── admin-dashboard/               # Angular 21
 ├── shared/
 │   ├── proto/                         # Protobuf/gRPC service definitions
 │   ├── openapi/                       # OpenAPI specs per service
