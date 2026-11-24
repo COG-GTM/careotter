@@ -23,14 +23,18 @@ class HttpError extends Error {
 
 const readBody = req => new Promise((resolve, reject) => {
   let data = '';
+  let tooLarge = false;
   req.on('data', c => {
+    if (tooLarge) return;
     data += c;
     if (data.length > MAX_BODY) {
+      tooLarge = true;
+      data = '';
       reject(new HttpError(413, 'body too large'));
-      req.destroy();
     }
   });
   req.on('end', () => {
+    if (tooLarge) return;
     try {
       const parsed = data ? JSON.parse(data) : {};
       resolve(parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {});
