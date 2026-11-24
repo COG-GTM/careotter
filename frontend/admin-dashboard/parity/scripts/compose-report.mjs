@@ -68,7 +68,7 @@ const icon = (s) => (s === 'passed' ? 'pass' : s ? `**${s}**` : 'not run');
 const count = (p) => Object.values(results).filter((r) => r[p] === 'passed').length;
 const total = Object.keys(results).length;
 let md = '# Parity report\n\n';
-md += `Baseline (Angular 17, :4000) vs upgraded (:4200). Same specs, separate mock gateways.\n\n`;
+md += `Baseline (${process.env['BASELINE_LABEL'] || 'Angular 17'}, :4000) vs upgraded (${process.env['UPGRADED_LABEL'] || 'Angular 21'}, :4200). Same specs, separate mock gateways.\n\n`;
 md += `| Page / flow | Baseline | Upgraded |\n|---|---|---|\n`;
 for (const [k, r] of Object.entries(results)) md += `| ${k} | ${icon(r.baseline)} | ${icon(r.upgraded)} |\n`;
 md += `| **Total** | **${count('baseline')}/${total}** | **${count('upgraded')}/${total}** |\n\n`;

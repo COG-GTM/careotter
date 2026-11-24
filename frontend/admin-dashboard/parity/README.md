@@ -20,7 +20,7 @@ PORT=8091 node mock-api/server.mjs &   # baseline gateway
 PORT=8092 node mock-api/server.mjs &   # upgraded gateway
 
 # baseline app (separate worktree of main, Node 20)
-git -C "$REPO" worktree add "$REPO/../careotter-baseline" origin/main
+git -C "$REPO" worktree add "$REPO/../careotter-baseline" c52ca8b   # last Angular 17 commit on main
 cd "$REPO/../careotter-baseline/frontend/admin-dashboard" && npm ci
 API_GATEWAY_URL=http://127.0.0.1:8091 npx ng serve --port 4000 &
 
