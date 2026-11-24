@@ -19,13 +19,13 @@ export default defineConfig({
   projects: [
     {
       name: 'baseline',
-      use: { baseURL: process.env.BASELINE_URL || 'http://localhost:4000' },
-      metadata: { api: process.env.BASELINE_API || 'http://localhost:8091' },
+      use: { baseURL: process.env['BASELINE_URL'] || 'http://localhost:4000' },
+      metadata: { api: process.env['BASELINE_API'] || 'http://localhost:8091' },
     },
     {
       name: 'upgraded',
-      use: { baseURL: process.env.UPGRADED_URL || 'http://localhost:4200' },
-      metadata: { api: process.env.UPGRADED_API || 'http://localhost:8092' },
+      use: { baseURL: process.env['UPGRADED_URL'] || 'http://localhost:4200' },
+      metadata: { api: process.env['UPGRADED_API'] || 'http://localhost:8092' },
     },
   ],
 });
