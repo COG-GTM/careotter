@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
@@ -120,6 +120,8 @@ import { AnalyticsReport } from '../../core/models/analytics.model';
   `]
 })
 export class AnalyticsComponent implements OnInit {
+  private api = inject(AdminApiService);
+
   loading = true;
 
   activeUsersChart: ChartConfiguration<'line'>['data'] = { labels: [], datasets: [] };
@@ -144,8 +146,6 @@ export class AnalyticsComponent implements OnInit {
     responsive: true,
     plugins: { legend: { position: 'right' } },
   };
-
-  constructor(private api: AdminApiService) {}
 
   ngOnInit(): void {
     this.api.getAnalyticsReport().subscribe(report => {

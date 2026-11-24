@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
@@ -162,6 +162,8 @@ import { DashboardStats } from '../../core/models/analytics.model';
   `]
 })
 export class DashboardComponent implements OnInit, OnDestroy {
+  private api = inject(AdminApiService);
+
   stats: DashboardStats | null = null;
   loading = true;
 
@@ -181,8 +183,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
   };
 
   private destroy$ = new Subject<void>();
-
-  constructor(private api: AdminApiService) {}
 
   ngOnInit(): void {
     this.loadStats();
