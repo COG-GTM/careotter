@@ -34,3 +34,14 @@ test('sign in, see shell, sign out', async ({ page }) => {
   await page.goto('/users');
   await expect(page).toHaveURL(/\/login$/);
 });
+
+test('API calls carry the bearer token and a 401 signs the user out', async ({ signedIn: page }) => {
+  const usersRequest = page.waitForRequest(r => r.url().includes('/api/v1/admin/users'));
+  await page.getByRole('link', { name: 'Users' }).click();
+  expect((await usersRequest).headers()['authorization']).toMatch(/^Bearer \S+$/);
+  await page.getByRole('link', { name: 'Dashboard' }).click();
+  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
+  await page.route('**/api/v1/admin/users**', route => route.fulfill({ status: 401, json: { error: 'expired' } }));
+  await page.getByRole('link', { name: 'Users' }).click();
+  await expect(page).toHaveURL(/\/login$/);
+});
