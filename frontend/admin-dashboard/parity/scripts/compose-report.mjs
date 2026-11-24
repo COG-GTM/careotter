@@ -19,9 +19,8 @@ const pad = (img, w, h) => {
   return out;
 };
 
-const names = existsSync(join(shots, 'baseline'))
-  ? readdirSync(join(shots, 'baseline')).filter((f) => f.endsWith('.png')).sort()
-  : [];
+const pngs = (dir) => (existsSync(join(shots, dir)) ? readdirSync(join(shots, dir)).filter((f) => f.endsWith('.png')) : []);
+const names = [...new Set([...pngs('baseline'), ...pngs('upgraded')])].sort();
 const resultsFile = join(root, 'results.json');
 const runStart = existsSync(resultsFile)
   ? Date.parse(JSON.parse(readFileSync(resultsFile, 'utf8')).stats?.startTime) || 0
@@ -31,7 +30,8 @@ const diffs = [];
 for (const file of names) {
   const basePath = join(shots, 'baseline', file);
   const upPath = join(shots, 'upgraded', file);
-  if (!existsSync(upPath)) { diffs.push([file, null]); continue; }
+  if (!existsSync(basePath)) { diffs.push([file, 'missing baseline']); continue; }
+  if (!existsSync(upPath)) { diffs.push([file, 'missing upgraded']); continue; }
   if (stale(basePath) || stale(upPath)) { diffs.push([file, 'stale']); continue; }
   const a = load(join(shots, 'baseline', file));
   const b = load(upPath);
@@ -73,7 +73,7 @@ md += `| Page / flow | Baseline | Upgraded |\n|---|---|---|\n`;
 for (const [k, r] of Object.entries(results)) md += `| ${k} | ${icon(r.baseline)} | ${icon(r.upgraded)} |\n`;
 md += `| **Total** | **${count('baseline')}/${total}** | **${count('upgraded')}/${total}** |\n\n`;
 md += `## Screenshots (baseline left, upgraded right)\n\n| Page | Pixel diff | Side by side |\n|---|---|---|\n`;
-const label = (d) => (d === null ? 'missing upgraded' : d === 'stale' ? 'stale (not captured in latest run)' : d.toFixed(2) + '%');
+const label = (d) => (d === 'stale' ? 'stale (not captured in latest run)' : typeof d === 'string' ? d : d.toFixed(2) + '%');
 for (const [f, d] of diffs) md += `| ${f.replace('.png', '')} | ${label(d)} | ${typeof d === 'number' ? `[view](side-by-side/${f})` : ''} |\n`;
 writeFileSync(join(root, 'README.md'), md);
 console.log(md);
