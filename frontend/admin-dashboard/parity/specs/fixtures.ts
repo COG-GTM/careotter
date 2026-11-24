@@ -48,8 +48,12 @@ export async function snack(page: Page, text: string | RegExp): Promise<void> {
 }
 
 export async function pickOption(page: Page, label: string, option: string): Promise<void> {
+  const listbox = page.getByRole('listbox');
+  await expect(listbox).toHaveCount(0);
   await page.getByRole('combobox', { name: label }).click();
-  await page.getByRole('option', { name: option, exact: true }).click();
+  await expect(listbox).toBeVisible();
+  await listbox.getByRole('option', { name: option, exact: true }).click();
+  await expect(listbox).toHaveCount(0);
 }
 
 export async function confirmDialog(page: Page, title: string, confirm: string): Promise<void> {
