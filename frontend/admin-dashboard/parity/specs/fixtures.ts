@@ -7,7 +7,12 @@ export const SHOTS = fileURLToPath(new URL('../report/screenshots', import.meta.
 
 export const test = base.extend<{ signedIn: Page }>({
   page: async ({ page, request }, use, testInfo) => {
-    await request.post(`${testInfo.project.metadata['api']}/__reset`);
+    const api = new URL(testInfo.project.metadata['api']);
+    expect((await request.post(`${api.origin}/__reset`)).ok()).toBeTruthy();
+    // Refuse to run if the app under test proxies /api anywhere but its own mock gateway.
+    const wired = await request.get(`${testInfo.project.use.baseURL}/api/v1/admin/__parity`);
+    expect(wired.ok(), 'app /api must proxy to the parity mock gateway').toBeTruthy();
+    expect(await wired.json()).toEqual({ mock: true, port: Number(api.port) });
     await use(page);
   },
   signedIn: async ({ page }, use) => {

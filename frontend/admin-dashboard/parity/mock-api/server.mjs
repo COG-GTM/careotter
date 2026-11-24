@@ -6,6 +6,8 @@ import http from 'node:http';
 import { seed } from './seed.mjs';
 
 const port = Number(process.env.PORT || 8091);
+const host = process.env.HOST || '127.0.0.1';
+const MAX_BODY = 1024 * 1024;
 let db = seed();
 let nextId = 1000;
 const now = () => '2026-11-20T12:00:00.000Z';
@@ -15,12 +17,28 @@ const send = (res, status, body) => {
   res.end(body === undefined ? '' : JSON.stringify(body));
 };
 
-const readBody = req => new Promise(resolve => {
+class HttpError extends Error {
+  constructor(status, message) { super(message); this.status = status; }
+}
+
+const readBody = req => new Promise((resolve, reject) => {
   let data = '';
-  req.on('data', c => (data += c));
-  req.on('end', () => {
-    try { resolve(data ? JSON.parse(data) : {}); } catch { resolve({}); }
+  req.on('data', c => {
+    data += c;
+    if (data.length > MAX_BODY) {
+      reject(new HttpError(413, 'body too large'));
+      req.destroy();
+    }
   });
+  req.on('end', () => {
+    try {
+      const parsed = data ? JSON.parse(data) : {};
+      resolve(parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {});
+    } catch {
+      reject(new HttpError(400, 'invalid JSON body'));
+    }
+  });
+  req.on('error', reject);
 });
 
 function summary() {
@@ -146,6 +164,13 @@ const routes = [
     return [200, { incident: i }];
   }],
   ['DELETE', /^\/api\/v1\/admin\/incidents\/([^/]+)$/, (m) => {
+    const incident = db.incidents.find(x => x.id === m[1]);
+    if (incident?.devin_session_id && incident.devin_session_status === 'running') {
+      return [409, {
+        error: 'Cannot delete incident with an active Devin session',
+        details: `Stop Devin session '${incident.devin_session_id}' before deleting`,
+      }];
+    }
     db.incidents = db.incidents.filter(x => x.id !== m[1]);
     return [204];
   }],
@@ -165,15 +190,17 @@ const routes = [
   }],
 ];
 
+routes.push(['GET', /^\/api\/v1\/admin\/__parity$/, () => [200, { mock: true, port }]]);
+
 http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://localhost:${port}`);
-  const body = ['POST', 'PUT', 'PATCH'].includes(req.method) ? await readBody(req) : {};
-  for (const [method, re, handler] of routes) {
-    const m = url.pathname.match(re);
-    if (m && method === req.method) {
-      const [status, payload] = handler(m, url, body);
-      return send(res, status, payload);
-    }
+  try {
+    const url = new URL(req.url, `http://localhost:${port}`);
+    const route = routes.find(([method, re]) => method === req.method && re.test(url.pathname));
+    if (!route) return send(res, 404, { error: `no mock for ${req.method} ${url.pathname}` });
+    const body = ['POST', 'PUT', 'PATCH'].includes(req.method) ? await readBody(req) : {};
+    const [status, payload] = route[2](url.pathname.match(route[1]), url, body);
+    send(res, status, payload);
+  } catch (err) {
+    if (!res.headersSent) send(res, err instanceof HttpError ? err.status : 500, { error: String(err.message || err) });
   }
-  send(res, 404, { error: `no mock for ${req.method} ${url.pathname}` });
-}).listen(port, () => console.log(`mock admin API on :${port}`));
+}).listen(port, host, () => console.log(`mock admin API on ${host}:${port}`));

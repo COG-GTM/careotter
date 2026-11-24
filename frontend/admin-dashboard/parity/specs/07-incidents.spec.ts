@@ -51,11 +51,18 @@ test('launch Devin, resolve, close and delete incidents', async ({ signedIn: pag
   await confirmDialog(page, 'Close Incident', 'Close');
   await snack(page, 'Incident closed');
   await expect(page.getByText('2 Closed (hidden)')).toBeVisible();
+  await expect(cards).toHaveCount(2);
   const search = cards.filter({ hasText: 'Search autocomplete' });
   await search.getByRole('button', { name: 'Delete' }).click();
   await confirmDialog(page, 'Delete Incident', 'Delete');
+  await snack(page, "Stop Devin session 'devin-abc123' before deleting");
+  await expect(cards).toHaveCount(2);
+  const upload = cards.filter({ hasText: 'Upload failures in Radiology' });
+  await upload.getByRole('button', { name: 'Delete' }).click();
+  await confirmDialog(page, 'Delete Incident', 'Delete');
   await snack(page, 'Incident deleted');
   await expect(cards).toHaveCount(1);
+  await expect(search).toBeVisible();
 });
 
 test('demo controls: auto-investigate and chaos', async ({ signedIn: page }, info) => {
