@@ -1,6 +1,6 @@
 // Builds report/side-by-side/*.png (baseline left, upgraded right), pixel-diff %
 // and report/README.md from report/screenshots/{baseline,upgraded} + results.json.
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PNG } from 'pngjs';
@@ -22,10 +22,17 @@ const pad = (img, w, h) => {
 const names = existsSync(join(shots, 'baseline'))
   ? readdirSync(join(shots, 'baseline')).filter((f) => f.endsWith('.png')).sort()
   : [];
+const resultsFile = join(root, 'results.json');
+const runStart = existsSync(resultsFile)
+  ? Date.parse(JSON.parse(readFileSync(resultsFile, 'utf8')).stats?.startTime) || 0
+  : 0;
+const stale = (p) => statSync(p).mtimeMs < runStart;
 const diffs = [];
 for (const file of names) {
+  const basePath = join(shots, 'baseline', file);
   const upPath = join(shots, 'upgraded', file);
   if (!existsSync(upPath)) { diffs.push([file, null]); continue; }
+  if (stale(basePath) || stale(upPath)) { diffs.push([file, 'stale']); continue; }
   const a = load(join(shots, 'baseline', file));
   const b = load(upPath);
   const w = Math.max(a.width, b.width), h = Math.max(a.height, b.height);
@@ -66,6 +73,7 @@ md += `| Page / flow | Baseline | Upgraded |\n|---|---|---|\n`;
 for (const [k, r] of Object.entries(results)) md += `| ${k} | ${icon(r.baseline)} | ${icon(r.upgraded)} |\n`;
 md += `| **Total** | **${count('baseline')}/${total}** | **${count('upgraded')}/${total}** |\n\n`;
 md += `## Screenshots (baseline left, upgraded right)\n\n| Page | Pixel diff | Side by side |\n|---|---|---|\n`;
-for (const [f, d] of diffs) md += `| ${f.replace('.png', '')} | ${d === null ? 'missing upgraded' : d.toFixed(2) + '%'} | ${d === null ? '' : `[view](side-by-side/${f})`} |\n`;
+const label = (d) => (d === null ? 'missing upgraded' : d === 'stale' ? 'stale (not captured in latest run)' : d.toFixed(2) + '%');
+for (const [f, d] of diffs) md += `| ${f.replace('.png', '')} | ${label(d)} | ${typeof d === 'number' ? `[view](side-by-side/${f})` : ''} |\n`;
 writeFileSync(join(root, 'README.md'), md);
 console.log(md);
