@@ -11,8 +11,11 @@ test('system health summary and service cards', async ({ signedIn: page }, info)
   await expect(doc).toContainText('840ms');
   await expect(doc).toContainText('DEGRADED');
   await shot(page, '07-health', info.project.name);
+  const refreshed = page.waitForResponse(r => r.url().includes('/api/v1/admin/health/services') && r.ok());
   await page.getByRole('button', { name: 'Refresh' }).click();
+  await refreshed;
   await expect(page.locator('mat-card.service-card')).toHaveCount(10);
+  await expect(doc).toContainText('840ms');
 });
 
 test('analytics charts render', async ({ signedIn: page }, info) => {
