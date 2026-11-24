@@ -28,6 +28,9 @@ test('feature flags search and toggle', async ({ signedIn: page }, info) => {
   await expect(cards).toHaveCount(1);
   await cards.first().getByRole('switch').click();
   await snack(page, 'Telehealth Video enabled');
+  await page.reload();
+  await page.getByLabel('Search features').fill('video');
+  await expect(cards.first().getByRole('switch')).toBeChecked();
   await page.getByLabel('Search features').fill('zzz');
   await expect(page.getByText('No feature flags match your search')).toBeVisible();
 });
