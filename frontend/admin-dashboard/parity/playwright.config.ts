@@ -1,5 +1,11 @@
 import { defineConfig } from '@playwright/test';
 
+const baselineApi = process.env['BASELINE_API'] || 'http://127.0.0.1:8091';
+const upgradedApi = process.env['UPGRADED_API'] || 'http://127.0.0.1:8092';
+if (new URL(baselineApi).port === new URL(upgradedApi).port) {
+  throw new Error('BASELINE_API and UPGRADED_API must use different mock gateway ports');
+}
+
 // Same specs, two apps. Each app proxies /api to its own mock gateway instance
 // (see README.md), and `metadata.api` lets specs reset that instance's state.
 export default defineConfig({
@@ -20,12 +26,12 @@ export default defineConfig({
     {
       name: 'baseline',
       use: { baseURL: process.env['BASELINE_URL'] || 'http://localhost:4000' },
-      metadata: { api: process.env['BASELINE_API'] || 'http://127.0.0.1:8091' },
+      metadata: { api: baselineApi },
     },
     {
       name: 'upgraded',
       use: { baseURL: process.env['UPGRADED_URL'] || 'http://localhost:4200' },
-      metadata: { api: process.env['UPGRADED_API'] || 'http://127.0.0.1:8092' },
+      metadata: { api: upgradedApi },
     },
   ],
 });
