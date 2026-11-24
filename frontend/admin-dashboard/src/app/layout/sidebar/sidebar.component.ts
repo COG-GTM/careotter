@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { Component, Input, output } from '@angular/core';
 
 import { RouterModule } from '@angular/router';
 import { MatListModule } from '@angular/material/list';
@@ -164,7 +164,7 @@ interface NavItem {
 })
 export class SidebarComponent {
   @Input() collapsed = false;
-  @Output() collapsedChange = new EventEmitter<boolean>();
+  readonly collapsedChange = output<boolean>();
 
   navItems: NavItem[] = [
     { label: 'Dashboard', icon: 'dashboard', route: '/' },
