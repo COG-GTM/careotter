@@ -1,6 +1,6 @@
 # Parity report
 
-Baseline (Angular 17, :4000) vs upgraded (:4200). Same specs, separate mock gateways.
+Baseline (Angular 17, :4000) vs upgraded (Angular 21, :4200). Same specs, separate mock gateways.
 
 | Page / flow | Baseline | Upgraded |
 |---|---|---|
@@ -32,14 +32,14 @@ Baseline (Angular 17, :4000) vs upgraded (:4200). Same specs, separate mock gate
 |---|---|---|
 | 01-login-error | 0.00% | [view](side-by-side/01-login-error.png) |
 | 01-login | 0.00% | [view](side-by-side/01-login.png) |
-| 02-dashboard | 0.11% | [view](side-by-side/02-dashboard.png) |
+| 02-dashboard | 0.25% | [view](side-by-side/02-dashboard.png) |
 | 03-users-filtered | 0.07% | [view](side-by-side/03-users-filtered.png) |
 | 03-users | 0.24% | [view](side-by-side/03-users.png) |
 | 04-user-detail | 0.25% | [view](side-by-side/04-user-detail.png) |
 | 05-audit | 0.71% | [view](side-by-side/05-audit.png) |
 | 06-features | 0.07% | [view](side-by-side/06-features.png) |
 | 07-health | 0.13% | [view](side-by-side/07-health.png) |
-| 08-analytics | 0.28% | [view](side-by-side/08-analytics.png) |
+| 08-analytics | 0.33% | [view](side-by-side/08-analytics.png) |
 | 09-announcements-form | 0.03% | [view](side-by-side/09-announcements-form.png) |
 | 09-announcements | 0.03% | [view](side-by-side/09-announcements.png) |
 | 10-quotas | 0.00% | [view](side-by-side/10-quotas.png) |
